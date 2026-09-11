@@ -49,10 +49,10 @@ static id createRCTSource(NSURL *url, NSData *data)
     @catch (NSException *e)
     {
         BunnyLog(@"Failed to set RCTSource properties via KVC: %@", e);
-        object_setInstanceVariable(newSource, "_url", (__bridge void *) url);
-        object_setInstanceVariable(newSource, "_data", (__bridge void *) data);
-        NSUInteger len = data.length;
-        object_setInstanceVariable(newSource, "_length", (void *) len);
+        Ivar urlIvar = class_getInstanceVariable(RCTSourceClass, "_url");
+        if (urlIvar) object_setIvar(newSource, urlIvar, url);
+        Ivar dataIvar = class_getInstanceVariable(RCTSourceClass, "_data");
+        if (dataIvar) object_setIvar(newSource, dataIvar, data);
     }
     return newSource;
 }
