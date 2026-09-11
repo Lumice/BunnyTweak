@@ -183,14 +183,16 @@ jobs:
 
       - name: Inject tweak and extension
         run: |
-          cyan -duwsgq -i discord.ipa -o ${{ env.APP_NAME }}.ipa -f ${{ env.ROOTLESS_DEB_FILE_NAME }} OpenInDiscord/build/OpenInDiscord.appex
+          cyan -duwsgq -i discord.ipa -o ${{ env.APP_NAME }}.ipa -f ${{ env.ROOTLESS_DEB_FILE_NAME }}
+          cyan -duwsgq -i discord.ipa -o ${{ env.APP_NAME }}-WithExtension.ipa -f ${{ env.ROOTLESS_DEB_FILE_NAME }} OpenInDiscord/build/OpenInDiscord.appex
 
       - name: Upload ipa as artifact
         uses: actions/upload-artifact@v4
         with:
           name: ipa
-          path: ${{ env.APP_NAME }}.ipa
-
+          path: |
+            ${{ env.APP_NAME }}.ipa
+            ${{ env.APP_NAME }}-WithExtension.ipa
   release-app:
     if: |
       inputs.caller_workflow != 'ci' && 
@@ -241,7 +243,7 @@ jobs:
           files: |
             ${{ env.ROOTLESS_DEB_FILE_NAME }}
             ${{ env.APP_NAME }}.ipa
-          generate_release_notes: true
+            ${{ env.APP_NAME }}-WithExtension.ipa
           prerelease: ${{ env.IS_PRERELEASE }}
           fail_on_unmatched_files: true
           token: ${{ env.GITHUB_TOKEN }}

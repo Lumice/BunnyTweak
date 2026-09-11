@@ -50,34 +50,44 @@ static void showBundleIDError(BundleIDError error)
 
 static NSString *getAccessGroupID(void)
 {
-    NSDictionary *query = @{
-        (__bridge NSString *) kSecClass : (__bridge NSString *) kSecClassGenericPassword,
-        (__bridge NSString *) kSecAttrAccount : @"bundleSeedID",
-        (__bridge NSString *) kSecAttrService : @"",
-        (__bridge NSString *) kSecReturnAttributes : @YES
-    };
-
-    CFDictionaryRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef) query, (CFTypeRef *) &result);
-
-    if (status == errSecItemNotFound)
+    @try
     {
-        status = SecItemAdd((__bridge CFDictionaryRef) query, (CFTypeRef *) &result);
-    }
+        NSDictionary *query = @{
+            (__bridge NSString *) kSecClass : (__bridge NSString *) kSecClassGenericPassword,
+            (__bridge NSString *) kSecAttrAccount : @"bundleSeedID",
+            (__bridge NSString *) kSecAttrService : @"",
+            (__bridge NSString *) kSecReturnAttributes : @YES
+        };
 
-    if (status != errSecSuccess)
-        return nil;
+        CFDictionaryRef result = NULL;
+        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef) query, (CFTypeRef *) &result);
 
-    NSString *accessGroup =
-        [(__bridge NSDictionary *) result objectForKey:(__bridge NSString *) kSecAttrAccessGroup];
-    if (result)
+        if (status == errSecItemNotFound)
+        {
+            status = SecItemAdd((__bridge CFDictionaryRef) query, (CFTypeRef *) &result);
+        }
+
+        if (status != errSecSuccess || !result)
+            return nil;
+
+        NSString *accessGroup =
+            [(__bridge NSDictionary *) result objectForKey:(__bridge NSString *) kSecAttrAccessGroup];
         CFRelease(result);
-
-    return accessGroup;
+        return accessGroup;
+    }
+    @catch (NSException *e)
+    {
+        BunnyLog(@"Error retrieving access group ID: %@", e);
+        return nil;
+    }
 }
+
+static NSString *cachedMainBundlePath = nil;
 
 static BOOL isSelfCall(void)
 {
+    if (!cachedMainBundlePath)
+        return NO;
     NSArray *address = [NSThread callStackReturnAddresses];
     if (address.count <= 2)
         return NO;
@@ -87,7 +97,7 @@ static BOOL isSelfCall(void)
     if (!info.dli_fname)
         return NO;
     NSString *path = [NSString stringWithUTF8String:info.dli_fname];
-    return [path hasPrefix:NSBundle.mainBundle.bundlePath];
+    return [path hasPrefix:cachedMainBundlePath];
 }
 
 %group Sideloading
@@ -147,7 +157,8 @@ static BOOL isSelfCall(void)
 %hook UIPasteboard
 - (NSString *)_accessGroup
 {
-    return getAccessGroupID();
+    NSString *group = getAccessGroupID();
+    return group ?: %orig;
 }
 %end
 
@@ -240,10 +251,15 @@ static BOOL isSelfCall(void)
 
 %ctor
 {
-    BOOL isAppStoreApp = [[NSFileManager defaultManager]
-        fileExistsAtPath:[[NSBundle mainBundle] appStoreReceiptURL].path];
-    if (!isAppStoreApp)
+    @autoreleasepool
     {
-        %init(Sideloading);
+        cachedMainBundlePath = [[NSBundle mainBundle] bundlePath];
+        NSURL *receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
+        BOOL isAppStoreApp =
+            receiptURL && [[NSFileManager defaultManager] fileExistsAtPath:receiptURL.path];
+        if (!isAppStoreApp)
+        {
+            %init(Sideloading);
+        }
     }
 }

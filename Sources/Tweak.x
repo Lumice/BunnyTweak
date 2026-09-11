@@ -417,7 +417,7 @@ static NSArray<NSData *> *prepareInjectionScripts(void)
         BunnyLog(@"Is jailbroken: %d", isJailbroken);
         BunnyLog(@"Bundle path for jailbroken: %@", bundlePath);
 
-        NSString *jailedPath = [[NSBundle mainBundle].bundleURL.path
+        NSString *jailedPath = [[NSBundle mainBundle].bundlePath
             stringByAppendingPathComponent:@"BunnyResources.bundle"];
         BunnyLog(@"Bundle path for jailed: %@", jailedPath);
 
