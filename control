@@ -1,6 +1,6 @@
 Package: app.pyoncord
 Name: Bunny
-Version: 0.8.1
+Version: 0.9.0
 Architecture: iphoneos-arm
 Description: A client modification for Discord's mobile app.
 Maintainer: Adrian Castro, Pylix

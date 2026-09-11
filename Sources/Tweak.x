@@ -1,14 +1,18 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <dlfcn.h>
+#import <objc/runtime.h>
 
 #import "Fonts.h"
 #import "LoaderConfig.h"
 #import "Logger.h"
+#import "RCTInstance.h"
+#import "RCTCxxBridge.h"
 #import "Settings.h"
 #import "Themes.h"
 #import "Utils.h"
 
-static NSURL         *source;
+static NSURL         *sourceUrl;
 static NSString      *bunnyPatchesBundlePath;
 static NSURL         *pyoncordDirectory;
 static LoaderConfig  *loaderConfig;
@@ -16,17 +20,46 @@ static NSTimeInterval shakeStartTime = 0;
 static BOOL           isShaking      = NO;
 id                    gBridge        = nil;
 
-%hook RCTCxxBridge
-
-- (void)executeApplicationScript:(NSData *)script url:(NSURL *)url async:(BOOL)async
+static id createRCTSource(NSURL *url, NSData *data)
 {
-    if (![url.absoluteString containsString:@"main.jsbundle"])
+    Class RCTSourceClass = NSClassFromString(@"RCTSource");
+    if (!RCTSourceClass)
     {
-        return %orig;
+        BunnyLog(@"RCTSource class not found in runtime");
+        return nil;
     }
 
-    gBridge = self;
-    BunnyLog(@"Stored bridge reference: %@", gBridge);
+    // Try RCTSourceCreate if available as an exported C function
+    typedef id (*RCTSourceCreateFunc)(NSURL *, NSData *, int64_t);
+    RCTSourceCreateFunc rctSourceCreate =
+        (RCTSourceCreateFunc) dlsym(RTLD_DEFAULT, "RCTSourceCreate");
+    if (rctSourceCreate)
+    {
+        return rctSourceCreate(url, data, (int64_t) data.length);
+    }
+
+    // Fallback: instantiate via alloc and set properties via KVC / ivars
+    id newSource = [[RCTSourceClass alloc] init];
+    @try
+    {
+        [newSource setValue:url forKey:@"url"];
+        [newSource setValue:data forKey:@"data"];
+        [newSource setValue:@(data.length) forKey:@"length"];
+    }
+    @catch (NSException *e)
+    {
+        BunnyLog(@"Failed to set RCTSource properties via KVC: %@", e);
+        object_setInstanceVariable(newSource, "_url", (__bridge void *) url);
+        object_setInstanceVariable(newSource, "_data", (__bridge void *) data);
+        NSUInteger len = data.length;
+        object_setInstanceVariable(newSource, "_length", (void *) len);
+    }
+    return newSource;
+}
+
+static NSArray<NSData *> *prepareInjectionScripts(void)
+{
+    NSMutableArray<NSData *> *scripts = [NSMutableArray array];
 
     NSBundle *bunnyPatchesBundle = [NSBundle bundleWithPath:bunnyPatchesBundlePath];
     if (!bunnyPatchesBundle)
@@ -34,7 +67,7 @@ id                    gBridge        = nil;
         BunnyLog(@"Failed to load BunnyPatches bundle from path: %@", bunnyPatchesBundlePath);
         showErrorAlert(@"Loader Error",
                        @"Failed to initialize mod loader. Please reinstall the tweak.", nil);
-        return %orig;
+        return scripts;
     }
 
     NSURL *patchPath = [bunnyPatchesBundle URLForResource:@"payload-base" withExtension:@"js"];
@@ -43,12 +76,14 @@ id                    gBridge        = nil;
         BunnyLog(@"Failed to find payload-base.js in bundle");
         showErrorAlert(@"Loader Error",
                        @"Failed to initialize mod loader. Please reinstall the tweak.", nil);
-        return %orig;
+        return scripts;
     }
 
     NSData *patchData = [NSData dataWithContentsOfURL:patchPath];
-    BunnyLog(@"Injecting loader");
-    %orig(patchData, source, YES);
+    if (patchData)
+    {
+        [scripts addObject:patchData];
+    }
 
     __block NSData *bundle =
         [NSData dataWithContentsOfURL:[pyoncordDirectory URLByAppendingPathComponent:@"bundle.js"]];
@@ -91,7 +126,7 @@ id                    gBridge        = nil;
               if ([response isKindOfClass:[NSHTTPURLResponse class]])
               {
                   NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *) response;
-                  if (httpResponse.statusCode == 200)
+                  if (httpResponse.statusCode == 200 && data.length > 0)
                   {
                       bundle = data;
                       [bundle
@@ -112,21 +147,22 @@ id                    gBridge        = nil;
               dispatch_group_leave(group);
           }] resume];
 
-    dispatch_group_wait(group, DISPATCH_TIME_FOREVER);
+    // Wait at most 3.5 seconds to avoid freezing app launch indefinitely
+    dispatch_group_wait(group, dispatch_time(DISPATCH_TIME_NOW, 3.5 * NSEC_PER_SEC));
 
     NSData *themeData =
         [NSData dataWithContentsOfURL:[pyoncordDirectory
                                           URLByAppendingPathComponent:@"current-theme.json"]];
     if (themeData)
     {
-        NSError      *jsonError;
+        NSError      *jsonError = nil;
         NSDictionary *themeDict = [NSJSONSerialization JSONObjectWithData:themeData
                                                                   options:0
                                                                     error:&jsonError];
-        if (!jsonError)
+        if (!jsonError && [themeDict isKindOfClass:[NSDictionary class]])
         {
             BunnyLog(@"Loading theme data...");
-            if (themeDict[@"data"])
+            if (themeDict[@"data"] && [themeDict[@"data"] isKindOfClass:[NSDictionary class]])
             {
                 NSDictionary *data = themeDict[@"data"];
                 if (data[@"semanticColors"] && data[@"rawColors"])
@@ -136,11 +172,19 @@ id                    gBridge        = nil;
                 }
             }
 
-            NSString *jsCode =
-                [NSString stringWithFormat:@"globalThis.__PYON_LOADER__.storedTheme=%@",
-                                           [[NSString alloc] initWithData:themeData
-                                                                 encoding:NSUTF8StringEncoding]];
-            %orig([jsCode dataUsingEncoding:NSUTF8StringEncoding], source, async);
+            NSString *themeJsonStr = [[NSString alloc] initWithData:themeData
+                                                           encoding:NSUTF8StringEncoding];
+            if (themeJsonStr)
+            {
+                NSString *jsCode =
+                    [NSString stringWithFormat:@"globalThis.__PYON_LOADER__.storedTheme=%@;",
+                                               themeJsonStr];
+                NSData *themeJsData = [jsCode dataUsingEncoding:NSUTF8StringEncoding];
+                if (themeJsData)
+                {
+                    [scripts addObject:themeJsData];
+                }
+            }
         }
         else
         {
@@ -157,21 +201,25 @@ id                    gBridge        = nil;
         dataWithContentsOfURL:[pyoncordDirectory URLByAppendingPathComponent:@"fonts.json"]];
     if (fontData)
     {
-        NSError      *jsonError;
-        NSDictionary *fontDict = [NSJSONSerialization JSONObjectWithData:fontData
+        NSError      *jsonError = nil;
+        NSDictionary *fontDict  = [NSJSONSerialization JSONObjectWithData:fontData
                                                                  options:0
                                                                    error:&jsonError];
-        if (!jsonError && fontDict[@"main"])
+        if (!jsonError && [fontDict isKindOfClass:[NSDictionary class]] && fontDict[@"main"])
         {
             BunnyLog(@"Found font configuration, applying...");
             patchFonts(fontDict[@"main"], fontDict[@"name"]);
         }
     }
 
-    if (bundle)
+    if (bundle && bundle.length > 0)
     {
-        BunnyLog(@"Executing JS bundle");
-        %orig(bundle, source, async);
+        BunnyLog(@"Adding JS bundle to injection queue (%lu bytes)", (unsigned long) bundle.length);
+        [scripts addObject:bundle];
+    }
+    else
+    {
+        BunnyLog(@"Warning: No bundle data available to inject");
     }
 
     NSURL *preloadsDirectory = [pyoncordDirectory URLByAppendingPathComponent:@"preloads"];
@@ -183,17 +231,17 @@ id                    gBridge        = nil;
                                           includingPropertiesForKeys:nil
                                                              options:0
                                                                error:&error];
-        if (!error)
+        if (!error && contents)
         {
             for (NSURL *fileURL in contents)
             {
                 if ([[fileURL pathExtension] isEqualToString:@"js"])
                 {
-                    BunnyLog(@"Executing preload JS file %@", fileURL.absoluteString);
+                    BunnyLog(@"Adding preload JS file %@", fileURL.absoluteString);
                     NSData *data = [NSData dataWithContentsOfURL:fileURL];
                     if (data)
                     {
-                        %orig(data, source, async);
+                        [scripts addObject:data];
                     }
                 }
             }
@@ -204,8 +252,123 @@ id                    gBridge        = nil;
         }
     }
 
+    return scripts;
+}
+
+%group Bridgeless
+
+%hook RCTInstance
+
+- (void)_loadScriptFromSource:(id)source
+{
+    NSURL *url = nil;
+    @try
+    {
+        url = [source valueForKey:@"url"];
+    }
+    @catch (NSException *e)
+    {
+        BunnyLog(@"Could not get URL from source: %@", e);
+    }
+
+    if (!url || ![url.absoluteString containsString:@"main.jsbundle"])
+    {
+        return %orig(source);
+    }
+
+    gBridge = self;
+    BunnyLog(@"Stored RCTInstance bridge reference: %@", gBridge);
+
+    NSArray<NSData *> *scripts = prepareInjectionScripts();
+    for (NSData *scriptData in scripts)
+    {
+        id patchSource = createRCTSource(sourceUrl, scriptData);
+        if (patchSource)
+        {
+            BunnyLog(@"Injecting script via RCTInstance (_loadScriptFromSource:) (size: %lu)",
+                     (unsigned long) scriptData.length);
+            %orig(patchSource);
+        }
+    }
+
+    BunnyLog(@"Executing original main.jsbundle via RCTInstance (_loadScriptFromSource:)");
+    %orig(source);
+}
+
+%end
+
+%end
+
+%group BridgelessNoUnderscore
+
+%hook RCTInstance
+
+- (void)loadScriptFromSource:(id)source
+{
+    NSURL *url = nil;
+    @try
+    {
+        url = [source valueForKey:@"url"];
+    }
+    @catch (NSException *e)
+    {
+        BunnyLog(@"Could not get URL from source: %@", e);
+    }
+
+    if (!url || ![url.absoluteString containsString:@"main.jsbundle"])
+    {
+        return %orig(source);
+    }
+
+    gBridge = self;
+    BunnyLog(@"Stored RCTInstance bridge reference: %@", gBridge);
+
+    NSArray<NSData *> *scripts = prepareInjectionScripts();
+    for (NSData *scriptData in scripts)
+    {
+        id patchSource = createRCTSource(sourceUrl, scriptData);
+        if (patchSource)
+        {
+            BunnyLog(@"Injecting script via RCTInstance (loadScriptFromSource:) (size: %lu)",
+                     (unsigned long) scriptData.length);
+            %orig(patchSource);
+        }
+    }
+
+    BunnyLog(@"Executing original main.jsbundle via RCTInstance (loadScriptFromSource:)");
+    %orig(source);
+}
+
+%end
+
+%end
+
+%group LegacyBridge
+
+%hook RCTCxxBridge
+
+- (void)executeApplicationScript:(NSData *)script url:(NSURL *)url async:(BOOL)async
+{
+    if (![url.absoluteString containsString:@"main.jsbundle"])
+    {
+        return %orig(script, url, async);
+    }
+
+    gBridge = self;
+    BunnyLog(@"Stored RCTCxxBridge bridge reference: %@", gBridge);
+
+    NSArray<NSData *> *scripts = prepareInjectionScripts();
+    for (NSData *scriptData in scripts)
+    {
+        BunnyLog(@"Injecting script via RCTCxxBridge (size: %lu)", (unsigned long) scriptData.length);
+        %orig(scriptData, sourceUrl, YES);
+    }
+
+    BunnyLog(@"Executing original main.jsbundle via RCTCxxBridge");
     %orig(script, url, async);
 }
+
+%end
 
 %end
 
@@ -228,7 +391,7 @@ id                    gBridge        = nil;
         NSTimeInterval currentTime   = [[NSDate date] timeIntervalSince1970];
         NSTimeInterval shakeDuration = currentTime - shakeStartTime;
 
-        if (shakeDuration >= 0.5 && shakeDuration <= 2.0)
+        if (shakeDuration >= 0.3 && shakeDuration <= 3.0)
         {
             dispatch_async(dispatch_get_main_queue(), ^{ showSettingsSheet(); });
         }
@@ -243,7 +406,7 @@ id                    gBridge        = nil;
 {
     @autoreleasepool
     {
-        source = [NSURL URLWithString:@"bunny"];
+        sourceUrl = [NSURL URLWithString:@"bunny"];
 
         NSString *install_prefix = @"/var/jb";
         isJailbroken             = [[NSFileManager defaultManager] fileExistsAtPath:install_prefix];
@@ -282,6 +445,40 @@ id                    gBridge        = nil;
         loaderConfig      = [[LoaderConfig alloc] init];
         [loaderConfig loadConfig];
 
+        // Detect React Native classes available in the runtime
+        Class rctBridgeClass   = objc_getClass("RCTCxxBridge");
+        Class rctInstanceClass = objc_getClass("RCTInstance");
+
+        BunnyLog(@"Runtime class detection - RCTCxxBridge: %@, RCTInstance: %@",
+                 rctBridgeClass ? @"Found" : @"Not found",
+                 rctInstanceClass ? @"Found" : @"Not found");
+
+        if (rctInstanceClass)
+        {
+            if (class_getInstanceMethod(rctInstanceClass, @selector(_loadScriptFromSource:)))
+            {
+                BunnyLog(@"Initializing Bridgeless hook (_loadScriptFromSource:)");
+                %init(Bridgeless);
+            }
+            else if (class_getInstanceMethod(rctInstanceClass, @selector(loadScriptFromSource:)))
+            {
+                BunnyLog(@"Initializing BridgelessNoUnderscore hook (loadScriptFromSource:)");
+                %init(BridgelessNoUnderscore);
+            }
+            else
+            {
+                BunnyLog(@"Warning: RCTInstance found but neither script loading method detected, initializing Bridgeless");
+                %init(Bridgeless);
+            }
+        }
+
+        if (rctBridgeClass)
+        {
+            BunnyLog(@"Initializing LegacyBridge hook (RCTCxxBridge)");
+            %init(LegacyBridge);
+        }
+
+        // Initialize default (ungrouped) hooks like UIWindow
         %init;
     }
 }

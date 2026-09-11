@@ -1,6 +1,7 @@
 #import "Utils.h"
 #import "LoaderConfig.h"
 #import "Logger.h"
+#import <dlfcn.h>
 #import <objc/message.h>
 #import <spawn.h>
 #import <sys/utsname.h>
@@ -92,15 +93,28 @@ void reloadApp(UIViewController *viewController) {
     [viewController
         dismissViewControllerAnimated:NO
                            completion:^{
-                               if (gBridge &&
-                                   [gBridge isKindOfClass:NSClassFromString(@"RCTCxxBridge")]) {
+                               // 1. Try RCTTriggerReloadCommandListeners (official React Native reload)
+                               typedef void (*RCTTriggerReloadFunc)(id, NSString *);
+                               RCTTriggerReloadFunc triggerReload =
+                                   (RCTTriggerReloadFunc) dlsym(RTLD_DEFAULT, "RCTTriggerReloadCommandListeners");
+                               if (triggerReload) {
+                                   BunnyLog(@"Triggering reload via RCTTriggerReloadCommandListeners");
+                                   triggerReload(nil, @"Bunny Reload");
+                                   return;
+                               }
+
+                               // 2. Try gBridge reload selector
+                               if (gBridge) {
                                    SEL reloadSelector = NSSelectorFromString(@"reload");
                                    if ([gBridge respondsToSelector:reloadSelector]) {
+                                       BunnyLog(@"Triggering reload via gBridge reload");
                                        ((void (*)(id, SEL))objc_msgSend)(gBridge, reloadSelector);
                                        return;
                                    }
                                }
 
+                               // 3. Fallback: suspend and exit
+                               BunnyLog(@"Fallback reload: exiting app");
                                UIApplication *app = [UIApplication sharedApplication];
                                ((void (*)(id, SEL))objc_msgSend)(app, @selector(suspend));
                                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC),

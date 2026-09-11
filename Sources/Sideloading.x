@@ -79,8 +79,12 @@ static NSString *getAccessGroupID(void)
 static BOOL isSelfCall(void)
 {
     NSArray *address = [NSThread callStackReturnAddresses];
+    if (address.count <= 2)
+        return NO;
     Dl_info  info    = {0};
     if (dladdr((void *) [address[2] longLongValue], &info) == 0)
+        return NO;
+    if (!info.dli_fname)
         return NO;
     NSString *path = [NSString stringWithUTF8String:info.dli_fname];
     return [path hasPrefix:NSBundle.mainBundle.bundlePath];
@@ -127,7 +131,15 @@ static BOOL isSelfCall(void)
 
     NSArray *paths    = [self URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
     NSURL   *lastPath = [paths lastObject];
-    return [lastPath URLByAppendingPathComponent:@"AppGroup"];
+    NSURL   *appGroupURL = [lastPath URLByAppendingPathComponent:@"AppGroup"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:appGroupURL.path])
+    {
+        [[NSFileManager defaultManager] createDirectoryAtURL:appGroupURL
+                                 withIntermediateDirectories:YES
+                                                  attributes:nil
+                                                       error:nil];
+    }
+    return appGroupURL;
 }
 %end
 

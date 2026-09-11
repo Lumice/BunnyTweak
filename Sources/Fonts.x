@@ -6,13 +6,15 @@
 #import "Logger.h"
 #import "Utils.h"
 
+static NSRecursiveLock *fontLock = nil;
 NSMutableDictionary<NSString *, NSString *> *fontMap;
-
 %hook UIFont
 
 + (UIFont *)fontWithName:(NSString *)name size:(CGFloat)size
 {
+    [fontLock lock];
     NSString *replacementName = fontMap[name];
+    [fontLock unlock];
     if (replacementName)
     {
         UIFontDescriptor *replacementDescriptor =
@@ -33,7 +35,9 @@ NSMutableDictionary<NSString *, NSString *> *fontMap;
 
 + (UIFont *)fontWithDescriptor:(UIFontDescriptor *)descriptor size:(CGFloat)size
 {
+    [fontLock lock];
     NSString *replacementName = fontMap[descriptor.postscriptName];
+    [fontLock unlock];
     if (replacementName)
     {
         UIFontDescriptor *replacementDescriptor =
@@ -50,7 +54,9 @@ NSMutableDictionary<NSString *, NSString *> *fontMap;
 
 + (UIFont *)systemFontOfSize:(CGFloat)size
 {
+    [fontLock lock];
     NSString *replacementName = fontMap[@"systemFont"];
+    [fontLock unlock];
     if (replacementName)
     {
         return [UIFont fontWithName:replacementName size:size];
@@ -60,7 +66,9 @@ NSMutableDictionary<NSString *, NSString *> *fontMap;
 
 + (UIFont *)preferredFontForTextStyle:(UIFontTextStyle)style
 {
+    [fontLock lock];
     NSString *replacementName = fontMap[@"systemFont"];
+    [fontLock unlock];
     if (replacementName)
     {
         return [UIFont fontWithName:replacementName size:[UIFont systemFontSize]];
@@ -74,11 +82,13 @@ void patchFonts(NSDictionary<NSString *, NSString *> *mainFonts, NSString *fontD
 {
     BunnyLog(@"patchFonts called with fonts: %@ and def name: %@", mainFonts, fontDefName);
 
+    [fontLock lock];
     if (!fontMap)
     {
         BunnyLog(@"Creating new fontMap");
         fontMap = [NSMutableDictionary dictionary];
     }
+    [fontLock unlock];
 
     NSString *fontJson = [NSString
         stringWithContentsOfURL:[getPyoncordDirectory() URLByAppendingPathComponent:@"fonts.json"]
@@ -160,12 +170,15 @@ void patchFonts(NSDictionary<NSString *, NSString *> *mainFonts, NSString *fontD
                 CFErrorRef error = NULL;
                 if (CTFontManagerRegisterGraphicsFont(font, &error))
                 {
+                    [fontLock lock];
                     fontMap[fontName] = (__bridge NSString *) postScriptName;
+                    NSDictionary *mapCopy = [fontMap copy];
+                    [fontLock unlock];
                     BunnyLog(@"Successfully registered font %@ to %@", fontName,
                              (__bridge NSString *) postScriptName);
 
                     NSError *jsonError;
-                    NSData  *jsonData = [NSJSONSerialization dataWithJSONObject:fontMap
+                    NSData  *jsonData = [NSJSONSerialization dataWithJSONObject:mapCopy
                                                                        options:0
                                                                          error:&jsonError];
                     if (!jsonError)
@@ -197,7 +210,8 @@ void patchFonts(NSDictionary<NSString *, NSString *> *mainFonts, NSString *fontD
 {
     @autoreleasepool
     {
-        fontMap = [NSMutableDictionary dictionary];
+        fontLock = [[NSRecursiveLock alloc] init];
+        fontMap  = [NSMutableDictionary dictionary];
         BunnyLog(@"Font hooks initialized");
         %init;
     }

@@ -124,8 +124,15 @@ print_success "Installed cyan"
 NAME=$(grep '^Name:' control | cut -d ' ' -f 2)
 PACKAGE=$(grep '^Package:' control | cut -d ' ' -f 2)
 VERSION=$(grep '^Version:' control | cut -d ' ' -f 2)
-DEB_FILE="packages/${PACKAGE}_${VERSION}_iphoneos-arm.deb"
+DEB_FILE=$(ls packages/${PACKAGE}_${VERSION}_iphoneos-*.deb 2>/dev/null | head -n 1)
+if [ -z "$DEB_FILE" ]; then
+    DEB_FILE=$(ls packages/*_iphoneos-*.deb 2>/dev/null | head -n 1)
+fi
 
+if [ -z "$DEB_FILE" ] || [ ! -f "$DEB_FILE" ]; then
+    print_error "Failed to locate built DEB package in packages/"
+    exit 1
+fi
 print_status "Injecting tweak..."
 cyan -duwsgq -i discord-patched.ipa -o "$NAME.ipa" -f "$DEB_FILE" OpenInDiscord/build/OpenInDiscord.appex
 

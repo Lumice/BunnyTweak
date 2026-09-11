@@ -354,18 +354,39 @@ void showSettingsSheet(void) {
     UIWindow *window = nil;
     NSSet *scenes    = [[UIApplication sharedApplication] connectedScenes];
     for (UIScene *scene in scenes) {
-        if (scene.activationState == UISceneActivationStateForegroundActive) {
-            window = ((UIWindowScene *)scene).windows.firstObject;
-            break;
+        if ([scene isKindOfClass:[UIWindowScene class]] &&
+            scene.activationState == UISceneActivationStateForegroundActive) {
+            UIWindowScene *windowScene = (UIWindowScene *) scene;
+            for (UIWindow *w in windowScene.windows) {
+                if (w.isKeyWindow) {
+                    window = w;
+                    break;
+                }
+            }
+            if (window)
+                break;
+            window = windowScene.windows.firstObject;
+            if (window)
+                break;
         }
     }
 
     if (!window) {
-        window = [[UIApplication sharedApplication] windows].firstObject;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        window = [[UIApplication sharedApplication] keyWindow];
+        if (!window) {
+            window = [[UIApplication sharedApplication] windows].firstObject;
+        }
+#pragma clang diagnostic pop
     }
 
     if (window && window.rootViewController) {
-        [window.rootViewController presentViewController:navController animated:YES completion:nil];
+        UIViewController *topVC = window.rootViewController;
+        while (topVC.presentedViewController) {
+            topVC = topVC.presentedViewController;
+        }
+        [topVC presentViewController:navController animated:YES completion:nil];
     }
 }
 
