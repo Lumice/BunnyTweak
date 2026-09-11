@@ -455,19 +455,14 @@ static NSArray<NSData *> *prepareInjectionScripts(void)
 
         if (rctInstanceClass)
         {
-            if (class_getInstanceMethod(rctInstanceClass, @selector(_loadScriptFromSource:)))
-            {
-                BunnyLog(@"Initializing Bridgeless hook (_loadScriptFromSource:)");
-                %init(Bridgeless);
-            }
-            else if (class_getInstanceMethod(rctInstanceClass, @selector(loadScriptFromSource:)))
+            if (class_getInstanceMethod(rctInstanceClass, @selector(loadScriptFromSource:)))
             {
                 BunnyLog(@"Initializing BridgelessNoUnderscore hook (loadScriptFromSource:)");
                 %init(BridgelessNoUnderscore);
             }
             else
             {
-                BunnyLog(@"Warning: RCTInstance found but neither script loading method detected, initializing Bridgeless");
+                BunnyLog(@"Initializing Bridgeless hook (_loadScriptFromSource:)");
                 %init(Bridgeless);
             }
         }
