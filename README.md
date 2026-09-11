@@ -8,7 +8,7 @@
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Discord 344.1+ Compatibility**: Fully upgraded to hook into React Native's New Architecture (Fabric renderer and Bridgeless runtime).
 * **Duplicate App Ready**: Safe for dual-installation alongside the official Discord app via Signulous, Sideloadly, AltStore, or TrollStore with zero sandbox or bundle ID collisions.
@@ -18,11 +18,11 @@
 
 ---
 
-## 📥 Download & Installation
+## Download & Installation
 
 Download the latest pre-patched IPA from **[Releases](https://github.com/Lumice/BunnyTweak/releases/latest)**:
 
-👉 **[Download `LumiCord.ipa`](https://github.com/Lumice/BunnyTweak/releases/latest)**
+**[Download `LumiCord.ipa`](https://github.com/Lumice/BunnyTweak/releases/latest)**
 
 ### Signulous (Dual / Duplicate App)
 1. Download **`LumiCord.ipa`**.
@@ -37,7 +37,7 @@ Download the latest pre-patched IPA from **[Releases](https://github.com/Lumice/
 
 ---
 
-## 🛒 Plugin Marketplace
+## Plugin Marketplace
 
 LumiCord lets you install a full **Plugin Marketplace** directly inside Discord Settings:
 
@@ -52,7 +52,7 @@ LumiCord lets you install a full **Plugin Marketplace** directly inside Discord 
 
 ---
 
-## 🛠️ Building New Versions
+## Building New Versions
 
 When Discord releases an update, you can generate a new patched IPA directly from GitHub Actions without needing a Mac:
 
@@ -65,7 +65,7 @@ gh workflow run deploy.yml --repo Lumice/BunnyTweak \
 
 ---
 
-## 📜 Credits & License
+## Credits & License
 
 * Upgraded and maintained by **[Lumi](https://github.com/Lumice)**.
 * Originally forked from **[BunnyTweak](https://github.com/bunny-mod/BunnyTweak)** by Adrian Castro, Pylix, and FieryFlames.
