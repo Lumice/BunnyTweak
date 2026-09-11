@@ -9,7 +9,7 @@
 - (instancetype)initWithVersion:(NSString *)version {
     self = [super init];
     if (self) {
-        self.title = [NSString stringWithFormat:@"Bunny v%@ Recovery Menu", version];
+        self.title = [NSString stringWithFormat:@"LumiCord v%@ (Discord 344.1+)", version];
     }
     return self;
 }

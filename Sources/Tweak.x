@@ -411,17 +411,24 @@ static NSArray<NSData *> *prepareInjectionScripts(void)
         NSString *install_prefix = @"/var/jb";
         isJailbroken             = [[NSFileManager defaultManager] fileExistsAtPath:install_prefix];
 
-        NSString *bundlePath =
+        NSString *lumiBundlePath =
+            [NSString stringWithFormat:@"%@/Library/Application Support/LumiCordResources.bundle",
+                                       install_prefix];
+        NSString *bunnyBundlePath =
             [NSString stringWithFormat:@"%@/Library/Application Support/BunnyResources.bundle",
                                        install_prefix];
+        NSString *bundlePath =
+            [[NSFileManager defaultManager] fileExistsAtPath:lumiBundlePath] ? lumiBundlePath : bunnyBundlePath;
         BunnyLog(@"Is jailbroken: %d", isJailbroken);
         BunnyLog(@"Bundle path for jailbroken: %@", bundlePath);
 
-        NSString *jailedPath = [[NSBundle mainBundle].bundlePath
+        NSString *lumiJailedPath = [[NSBundle mainBundle].bundlePath
+            stringByAppendingPathComponent:@"LumiCordResources.bundle"];
+        NSString *bunnyJailedPath = [[NSBundle mainBundle].bundlePath
             stringByAppendingPathComponent:@"BunnyResources.bundle"];
+        NSString *jailedPath =
+            [[NSFileManager defaultManager] fileExistsAtPath:lumiJailedPath] ? lumiJailedPath : bunnyJailedPath;
         BunnyLog(@"Bundle path for jailed: %@", jailedPath);
-
-        bunnyPatchesBundlePath = isJailbroken ? bundlePath : jailedPath;
         BunnyLog(@"Selected bundle path: %@", bunnyPatchesBundlePath);
 
         BOOL bundleExists =

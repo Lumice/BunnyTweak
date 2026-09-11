@@ -6,16 +6,15 @@ FINALPACKAGE = 1
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = Bunny
-BUNDLE_NAME = BunnyResources
+TWEAK_NAME = LumiCord
+BUNDLE_NAME = LumiCordResources
 
-Bunny_FILES = $(wildcard Sources/*.x Sources/*.m Sources/**/*.x Sources/**/*.m)
-Bunny_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(THEOS_PACKAGE_BASE_VERSION)"' -I$(THEOS_PROJECT_DIR)/Headers
-Bunny_FRAMEWORKS = Foundation UIKit CoreGraphics CoreText CoreFoundation UniformTypeIdentifiers Security AuthenticationServices
+LumiCord_FILES = $(wildcard Sources/*.x Sources/*.m Sources/**/*.x Sources/**/*.m)
+LumiCord_CFLAGS = -fobjc-arc -DPACKAGE_VERSION='@"$(THEOS_PACKAGE_BASE_VERSION)"' -I$(THEOS_PROJECT_DIR)/Headers
+LumiCord_FRAMEWORKS = Foundation UIKit CoreGraphics CoreText CoreFoundation UniformTypeIdentifiers Security AuthenticationServices
 
-BunnyResources_INSTALL_PATH = "/Library/Application\ Support/"
-BunnyResources_RESOURCE_DIRS = Resources
-
+LumiCordResources_INSTALL_PATH = "/Library/Application\ Support/"
+LumiCordResources_RESOURCE_DIRS = Resources
 include $(THEOS_MAKE_PATH)/tweak.mk
 include $(THEOS_MAKE_PATH)/bundle.mk
 

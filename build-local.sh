@@ -134,7 +134,7 @@ if [ -z "$DEB_FILE" ] || [ ! -f "$DEB_FILE" ]; then
     exit 1
 fi
 print_status "Injecting tweak..."
-cyan -duwsgq -i discord-patched.ipa -o "$NAME.ipa" -f "$DEB_FILE" OpenInDiscord/build/OpenInDiscord.appex
+cyan -duweq -i "$IPA_FILE" -o "$NAME.ipa" -f "$DEB_FILE"
 
 if [ $? -ne 0 ]; then
     print_error "Failed to inject tweak"

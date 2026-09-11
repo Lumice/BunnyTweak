@@ -1,10 +1,10 @@
-Package: app.pyoncord
-Name: Bunny
+Package: dev.lumice.lumicord
+Name: LumiCord
 Version: 0.9.0
 Architecture: iphoneos-arm
-Description: A client modification for Discord's mobile app.
-Maintainer: Adrian Castro, Pylix
-Author: Adrian Castro, Pylix, FieryFlames
+Description: Modernized client modification for Discord iOS 344.1+ (React Native New Architecture)
+Maintainer: Lumi <https://github.com/Lumice>
+Author: Lumi, Bunny/Vendetta Contributors
 Icon: https://avatars.githubusercontent.com/u/132727175
 Section: Tweaks
 Depends: mobilesubstrate (>= 0.9.5000)
