@@ -8,17 +8,6 @@
 #import "Logger.h"
 #import "Utils.h"
 
-typedef struct __CMSDecoder *CMSDecoderRef;
-extern CFTypeRef             SecCMSDecodeGetContent(CFDataRef message);
-extern OSStatus              CMSDecoderCreate(CMSDecoderRef *cmsDecoder);
-extern OSStatus              CMSDecoderUpdateMessage(CMSDecoderRef cmsDecoder, const void *content,
-                                                     size_t contentLength);
-extern OSStatus              CMSDecoderFinalizeMessage(CMSDecoderRef cmsDecoder);
-extern OSStatus              CMSDecoderCopyContent(CMSDecoderRef cmsDecoder, CFDataRef *content);
-
-#define DISCORD_BUNDLE_ID @"com.hammerandchisel.discord"
-#define DISCORD_NAME      @"Discord"
-
 typedef NS_ENUM(NSInteger, BundleIDError) {
     BundleIDErrorIcon,
     BundleIDErrorPasskey
@@ -48,91 +37,7 @@ static void showBundleIDError(BundleIDError error)
     showErrorAlert(title, message, completion);
 }
 
-static NSString *getAccessGroupID(void)
-{
-    @try
-    {
-        NSDictionary *query = @{
-            (__bridge NSString *) kSecClass : (__bridge NSString *) kSecClassGenericPassword,
-            (__bridge NSString *) kSecAttrAccount : @"bundleSeedID",
-            (__bridge NSString *) kSecAttrService : @"",
-            (__bridge NSString *) kSecReturnAttributes : @YES
-        };
-
-        CFDictionaryRef result = NULL;
-        OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef) query, (CFTypeRef *) &result);
-
-        if (status == errSecItemNotFound)
-        {
-            status = SecItemAdd((__bridge CFDictionaryRef) query, (CFTypeRef *) &result);
-        }
-
-        if (status != errSecSuccess || !result)
-            return nil;
-
-        NSString *accessGroup =
-            [(__bridge NSDictionary *) result objectForKey:(__bridge NSString *) kSecAttrAccessGroup];
-        CFRelease(result);
-        return accessGroup;
-    }
-    @catch (NSException *e)
-    {
-        BunnyLog(@"Error retrieving access group ID: %@", e);
-        return nil;
-    }
-}
-
-static NSString *cachedMainBundlePath = nil;
-
-static BOOL isSelfCall(void)
-{
-    if (!cachedMainBundlePath)
-        return NO;
-    NSArray *address = [NSThread callStackReturnAddresses];
-    if (address.count <= 2)
-        return NO;
-    Dl_info  info    = {0};
-    if (dladdr((void *) [address[2] longLongValue], &info) == 0)
-        return NO;
-    if (!info.dli_fname)
-        return NO;
-    NSString *path = [NSString stringWithUTF8String:info.dli_fname];
-    return [path hasPrefix:cachedMainBundlePath];
-}
-
 %group Sideloading
-
-%hook NSBundle
-- (NSString *)bundleIdentifier
-{
-    return isSelfCall() ? DISCORD_BUNDLE_ID : %orig;
-}
-
-- (NSDictionary *)infoDictionary
-{
-    if (!isSelfCall())
-        return %orig;
-
-    NSDictionary        *origInfo = %orig;
-    NSMutableDictionary *info     = [origInfo mutableCopy];
-    info[@"CFBundleIdentifier"]  = DISCORD_BUNDLE_ID;
-    info[@"CFBundleDisplayName"] = DISCORD_NAME;
-    info[@"CFBundleName"]        = DISCORD_NAME;
-    return info;
-}
-
-- (id)objectForInfoDictionaryKey:(NSString *)key
-{
-    if (!isSelfCall())
-        return %orig;
-
-    if ([key isEqualToString:@"CFBundleIdentifier"])
-        return DISCORD_BUNDLE_ID;
-    if ([key isEqualToString:@"CFBundleDisplayName"] || [key isEqualToString:@"CFBundleName"])
-        return DISCORD_NAME;
-    return %orig;
-}
-%end
 
 %hook NSFileManager
 - (NSURL *)containerURLForSecurityApplicationGroupIdentifier:(NSString *)groupIdentifier
@@ -151,14 +56,6 @@ static BOOL isSelfCall(void)
                                                        error:nil];
     }
     return appGroupURL;
-}
-%end
-
-%hook UIPasteboard
-- (NSString *)_accessGroup
-{
-    NSString *group = getAccessGroupID();
-    return group ?: %orig;
 }
 %end
 
@@ -253,7 +150,6 @@ static BOOL isSelfCall(void)
 {
     @autoreleasepool
     {
-        cachedMainBundlePath = [[NSBundle mainBundle] bundlePath];
         NSURL *receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
         BOOL isAppStoreApp =
             receiptURL && [[NSFileManager defaultManager] fileExistsAtPath:receiptURL.path];

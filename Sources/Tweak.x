@@ -100,7 +100,7 @@ static NSArray<NSData *> *prepareInjectionScripts(void)
     else
     {
         bundleUrl = [NSURL
-            URLWithString:@"https://raw.githubusercontent.com/bunny-mod/builds/main/bunny.min.js"];
+            URLWithString:@"https://github.com/revenge-mod/revenge-bundle/releases/latest/download/revenge.js"];
         BunnyLog(@"Using default bundle URL: %@", bundleUrl.absoluteString);
     }
 
